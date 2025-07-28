@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: tracker
-          image: ghcr.io/meschbach/pfsense-bandwidth-tracker:v0.0.6
+          image: ghcr.io/meschbach/pfsense-bandwidth-tracker:latest
           ports:
             - containerPort: 2112
               name: http
