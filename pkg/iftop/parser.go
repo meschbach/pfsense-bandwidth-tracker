@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 )
 
@@ -20,9 +21,22 @@ const (
 	iftopFooterEnd
 )
 
+type AddressParts struct {
+	Host string
+	Port string
+}
+
 type BandwidthDirection struct {
 	Address    string
-	Cumulative string
+	Cumulative ByteReading
+}
+
+func (b BandwidthDirection) AddressParts() AddressParts {
+	host, port, err := net.SplitHostPort(b.Address)
+	if err != nil {
+		return AddressParts{Host: b.Address, Port: ""}
+	}
+	return AddressParts{Host: host, Port: port}
 }
 
 type Frame struct {
