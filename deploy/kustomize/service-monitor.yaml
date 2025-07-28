@@ -1,10 +1,17 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: tracker
+  name: bandwidth-monitor
 spec:
+  endpoints:
+    - honorLabels: true
+      interval: 10s
+      path: /metrics
+      port: metrics
+  jobLabel: app.kubernetes.io/name
+  namespaceSelector:
+    matchNames:
+      - bandwidth
   selector:
     matchLabels:
-      app: tracker
-  endpoints:
-    - port: http
+      app: bandwidth
