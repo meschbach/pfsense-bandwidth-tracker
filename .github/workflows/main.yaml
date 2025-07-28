@@ -50,10 +50,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tracker
-          path: build
+          path: .
       - name: Patch permissions
         run: |
           chmod u+x ./build/*
+      - name: verify expected inputs exist
+        run: |
+          find .
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@v1 # Don't use @master or @v1 unless you're happy to test the latest version
         id: version
