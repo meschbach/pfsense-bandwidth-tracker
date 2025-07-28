@@ -56,6 +56,7 @@ jobs:
           ls -lha
           # actions/*-artifact uses a zip which drops unix permissions
           chmod u+x tracker*
+          ls -lha
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@v1 # Don't use @master or @v1 unless you're happy to test the latest version
         id: version
@@ -82,6 +83,7 @@ jobs:
           platforms: "linux/amd64,linux/arm64"
           file: cmd/Dockerfile
           push: true
+          context: .
           tags: |
             ghcr.io/meschbach/pfsense-bandwidth-tracker:latest
             ghcr.io/meschbach/pfsense-bandwidth-tracker:${{ steps.version.outputs.tag }}
