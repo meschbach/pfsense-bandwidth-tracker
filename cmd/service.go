@@ -33,12 +33,12 @@ func runService(config *options) error {
 				} else {
 					labels := make(prometheus.Labels)
 					source := f.Source.AddressParts()
-					labels["src.host"] = source.Host
-					labels["src.port"] = source.Port
+					labels["src_host"] = source.Host
+					labels["src_port"] = source.Port
 
 					destination := f.Destination.AddressParts()
-					labels["dst.host"] = destination.Host
-					labels["dst.port"] = destination.Port
+					labels["dst_host"] = destination.Host
+					labels["dst_port"] = destination.Port
 					labels["iface"] = config.networkInterface
 					g := promauto.NewGauge(prometheus.GaugeOpts{
 						Name:        "bandwidth",
