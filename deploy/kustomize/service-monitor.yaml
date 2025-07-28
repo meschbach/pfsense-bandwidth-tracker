@@ -7,11 +7,11 @@ spec:
     - honorLabels: true
       interval: 10s
       path: /metrics
-      port: metrics
+      port: http
   jobLabel: app.kubernetes.io/name
   namespaceSelector:
     matchNames:
-      - bandwidth
+      - bandwidth-monitor-ns
   selector:
     matchLabels:
-      app: bandwidth
+      app.kubernetes.io/name: "bandwidth"

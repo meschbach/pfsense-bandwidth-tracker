@@ -3,21 +3,24 @@ kind: Deployment
 metadata:
   name: bandwidth
   labels:
-    app: bandwidth
+    app.kubernetes.io/name: "bandwidth"
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: bandwidth
+      app.kubernetes.io/name: "bandwidth"
   template:
     metadata:
       labels:
-        app: bandwidth
+        app.kubernetes.io/name: "bandwidth"
     spec:
       containers:
         - name: tracker
           image: ghcr.io/meschbach/pfsense-bandwidth-tracker:v0.0.6
           ports:
             - containerPort: 2112
+              name: http
+          command: [ "/tracker","service", "-u", "user", "-p", "host", "-s", "password", "-n", "iface" ]
