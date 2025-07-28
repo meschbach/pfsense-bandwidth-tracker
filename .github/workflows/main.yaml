@@ -51,12 +51,11 @@ jobs:
         with:
           name: tracker
           path: .
-      - name: Patch permissions
+      - name: Verify environment and patch permissions
         run: |
-          chmod u+x ./build/*
-      - name: verify expected inputs exist
-        run: |
-          find .
+          ls -lha
+          # actions/*-artifact uses a zip which drops unix permissions
+          chmod u+x tracker*
       - name: Bump version and push tag
         uses: anothrNick/github-tag-action@v1 # Don't use @master or @v1 unless you're happy to test the latest version
         id: version
