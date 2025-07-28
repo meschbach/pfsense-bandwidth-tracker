@@ -1,0 +1,93 @@
+name: Go
+
+on: [push]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        go-version: [ '1.24' ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+      # You can test your matrix by printing the current Go version
+      - name: Build and run unit tests ${{ matrix.go-version }}
+        run: |
+          go mod download
+          go test -count 1 ./pkg/...
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s -extldflags "-static"' -o tracker_amd64 ./cmd
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags='-w -s -extldflags "-static"' -o tracker_arm64 ./cmd
+      - name: Archive Artifacts
+        if: "${{ matrix.go-version == '1.24' && contains(github.ref, 'main') }}"
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracker
+          path: 'tracker*'
+          if-no-files-found: error
+          retention-days: 10
+
+  publish_images:
+    runs-on: ubuntu-latest
+    needs: [tests]
+    if: github.triggering_actor == 'meschbach' &&  (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    timeout-minutes: 5
+    # needed for version bumping
+    permissions:
+          contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Grab artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tracker
+          path: build
+      - name: Patch permissions
+        run: |
+          chmod u+x ./build/*
+      - name: Bump version and push tag
+        uses: anothrNick/github-tag-action@v1 # Don't use @master or @v1 unless you're happy to test the latest version
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # if you don't want to set write permissions use a PAT token
+          WITH_V: true
+          DEFAULT_BUMP: patch
+      - name: "Setup Environment"
+        run: |
+          echo "BRANCH=${{ steps.version.outputs.tag }}" |sed 's/v//g' >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+      - name: Build and push migrator
+        uses: docker/build-push-action@v5
+        with:
+          platforms: "linux/amd64,linux/arm64"
+          file: cmd/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/meschbach/pfsense-bandwidth-tracker:latest
+            ghcr.io/meschbach/pfsense-bandwidth-tracker:${{ steps.version.outputs.tag }}
+      - name: Github Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: |
+            build/tracker*
