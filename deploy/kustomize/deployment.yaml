@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bandwidth
+  labels:
+    app: bandwidth
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bandwidth
+  template:
+    metadata:
+      labels:
+        app: bandwidth
+    spec:
+      containers:
+        - name: tracker
+          image: ghcr.io/meschbach/pfsense-bandwidth-tracker:v0.0.6
+          ports:
+            - containerPort: 2112
