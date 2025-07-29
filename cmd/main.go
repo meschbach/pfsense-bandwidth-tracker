@@ -1,6 +1,9 @@
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/netstat"
+	"github.com/spf13/cobra"
+)
 
 type options struct {
 	pfsenseAddress   string
@@ -41,11 +44,31 @@ func main() {
 	serviceFlags.StringVarP(&config.pfsensePassword, "pfsense-password", "s", "", "Password of pfsense")
 	serviceFlags.StringVarP(&config.networkInterface, "network-interface", "n", "ixgb0", "Network interface")
 
+	netstatCmd := &cobra.Command{
+		Use:  "netstat",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			netstat := netstat.NewNetstat(&netstat.Config{
+				PfsenseUser:      config.pfsenseUser,
+				PfsenseAddress:   config.pfsenseAddress,
+				PfsensePassword:  config.pfsensePassword,
+				NetworkInterface: config.networkInterface,
+			})
+			return netstat.TextUIOnce(cmd.Context())
+		},
+	}
+	netstatFlag := netstatCmd.PersistentFlags()
+	netstatFlag.StringVarP(&config.pfsenseAddress, "pfsense-address", "p", "192.168.100.1", "Address of pfsense")
+	netstatFlag.StringVarP(&config.pfsenseUser, "pfsense-user", "u", "root", "Username of pfsense")
+	netstatFlag.StringVarP(&config.pfsensePassword, "pfsense-password", "s", "", "Password of pfsense")
+	netstatFlag.StringVarP(&config.networkInterface, "network-interface", "n", "ixgb0", "Network interface")
+
 	root := &cobra.Command{
 		Use:   "pfbandwidth",
 		Short: "Connects to a pfSense box and pulls bandwidth usage according to iftop",
 	}
 	root.AddCommand(tui)
+	root.AddCommand(netstatCmd)
 	root.AddCommand(service)
 
 	if err := root.Execute(); err != nil {

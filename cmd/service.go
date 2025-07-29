@@ -19,7 +19,7 @@ var frames = promauto.NewCounter(prometheus.CounterOpts{
 func runService(config *options) error {
 	go func() {
 		gauges := make(map[string]prometheus.Gauge)
-		engine.Run(context.Background(), &engine.Config{
+		err := engine.Run(context.Background(), &engine.Config{
 			PfsenseUser:      config.pfsenseUser,
 			PfsenseAddress:   config.pfsenseAddress,
 			PfsensePassword:  config.pfsensePassword,
@@ -51,6 +51,9 @@ func runService(config *options) error {
 			}
 			return nil
 		})
+		if err != nil {
+			panic(err)
+		}
 	}()
 	fmt.Printf("Exporting prometheus service on :2112\n")
 	http.Handle("/metrics", promhttp.Handler())

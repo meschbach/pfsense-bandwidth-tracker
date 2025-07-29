@@ -1,14 +1,10 @@
 package engine
 
 import (
-	"bufio"
 	"context"
-	"errors"
 	"fmt"
-	"github.com/melbahja/goph"
 	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/iftop"
-	"golang.org/x/crypto/ssh"
-	"io"
+	"os"
 )
 
 type Config struct {
@@ -19,64 +15,24 @@ type Config struct {
 }
 
 func Run(ctx context.Context, config *Config, onFrameDone iftop.OnFrameDone) (problem error) {
-	client, err := goph.NewConn(&goph.Config{
-		User:     config.PfsenseUser,
-		Addr:     config.PfsenseAddress,
-		Port:     22,
-		Auth:     goph.Password(config.PfsensePassword),
-		Timeout:  goph.DefaultTimeout,
-		Callback: ssh.InsecureIgnoreHostKey(),
-	})
+	streamer := SSHStream{Config: config}
+	lines, err := streamer.StreamCommand(256, "iftop", "-nNbB", "-i", config.NetworkInterface, "-t", "-L", "100", "-P")
 	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := client.Close(); err != nil {
-			problem = errors.Join(err, problem)
-		}
-	}()
-	eofTolerate := func(handle io.Closer) func() {
-		return func() {
-			if err := handle.Close(); err != nil {
-				if !errors.Is(err, io.EOF) {
-					problem = errors.Join(err, problem)
-				}
-			}
-		}
-	}
-	fmt.Printf("Connected.\n")
-	cmd, err := client.Command(fmt.Sprintf("iftop -nNbB -i %s -t -L 100 -P", config.NetworkInterface))
-	if err != nil {
-		return err
-	}
-	defer eofTolerate(cmd)
-
-	fmt.Print("Waiting for command...\n")
-	stdin, stdInErr := cmd.StdinPipe()
-	stdout, stdOutErr := cmd.StdoutPipe()
-	if err := errors.Join(stdInErr, stdOutErr); err != nil {
-		return err
-	}
-	defer eofTolerate(stdin)
-
-	if err := cmd.Start(); err != nil {
 		return err
 	}
 
 	i := iftop.NewInterpreter(onFrameDone)
-	lineSync := make(chan string, 256)
-	go func() {
-		defer close(lineSync)
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			lineSync <- line
+	for l := range lines {
+		if l.Problem != nil {
+			return l.Problem
 		}
-	}()
-
-	for line := range lineSync {
-		if err := i.Interpret(line); err != nil {
-			return err
+		if l.Stdout != nil {
+			if err := i.Interpret(*l.Stdout); err != nil {
+				return err
+			}
+		}
+		if l.Stderr != nil {
+			fmt.Fprintf(os.Stderr, "iftop.stderr(remote): %s\n", *l.Stderr)
 		}
 	}
 	return nil
