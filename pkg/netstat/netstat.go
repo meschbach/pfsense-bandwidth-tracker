@@ -24,7 +24,9 @@ func NewNetstat(cfg *Config) *Netstat {
 	}
 }
 
-func (n *Netstat) TextUIOnce(ctx context.Context) (problem error) {
+type OnReading func(reading []*IFaceReading) error
+
+func (n *Netstat) Tick(onReading OnReading) (problem error) {
 	c := engine.SSHStream{Config: &engine.Config{
 		PfsenseUser:      n.config.PfsenseUser,
 		PfsenseAddress:   n.config.PfsenseAddress,
@@ -59,28 +61,33 @@ func (n *Netstat) TextUIOnce(ctx context.Context) (problem error) {
 	if err != nil {
 		return err
 	}
-	var addresses []struct {
-		iface string
-		addr  *AddressReading
-	}
-	fmt.Printf("%10s\t%7s\t%9s\t%9s\t%9s\n", "iface", "mtu", "collisons", "ingress", "egress")
-	for _, r := range result {
-		fmt.Printf("%10s\t%7d\t%9d\t%s\t%s\n", r.Name, r.MTU, r.Collisions, bytesToScaled(r.IfaceStats.Ingress.Bytes), bytesToScaled(r.IfaceStats.Egress.Bytes))
-		for _, a := range r.AddressReadings {
-			addresses = append(addresses, struct {
-				iface string
-				addr  *AddressReading
-			}{
-				iface: r.Name,
-				addr:  a,
-			})
-		}
-	}
-	fmt.Printf("%20s\t%32s\t%10s\t%9s\t%9s\t%9s\t%9s\n", "network", "addr", "iface", "iPkts", "oPkts", "ingress", "egress")
-	for _, s := range addresses {
-		r := s.addr
-		fmt.Printf("%20s\t%32s\t%10s\t%9s\t%9s\t%s\t%s\n", r.Network, r.Address, s.iface, numberToScaled(r.Reading.Ingress.Packets), numberToScaled(r.Reading.Ingress.Bytes), bytesToScaled(r.Reading.Ingress.Bytes), bytesToScaled(r.Reading.Egress.Bytes))
-	}
+	return onReading(result)
+}
 
-	return nil
+func (n *Netstat) TextUIOnce(ctx context.Context) (problem error) {
+	return n.Tick(func(result []*IFaceReading) error {
+		var addresses []struct {
+			iface string
+			addr  *AddressReading
+		}
+		fmt.Printf("%10s\t%7s\t%9s\t%9s\t%9s\n", "iface", "mtu", "collisons", "ingress", "egress")
+		for _, r := range result {
+			fmt.Printf("%10s\t%7d\t%9d\t%s\t%s\n", r.Name, r.MTU, r.Collisions, bytesToScaled(r.IfaceStats.Ingress.Bytes), bytesToScaled(r.IfaceStats.Egress.Bytes))
+			for _, a := range r.AddressReadings {
+				addresses = append(addresses, struct {
+					iface string
+					addr  *AddressReading
+				}{
+					iface: r.Name,
+					addr:  a,
+				})
+			}
+		}
+		fmt.Printf("%20s\t%32s\t%10s\t%9s\t%9s\t%9s\t%9s\n", "network", "addr", "iface", "iPkts", "oPkts", "ingress", "egress")
+		for _, s := range addresses {
+			r := s.addr
+			fmt.Printf("%20s\t%32s\t%10s\t%9s\t%9s\t%s\t%s\n", r.Network, r.Address, s.iface, numberToScaled(r.Reading.Ingress.Packets), numberToScaled(r.Reading.Ingress.Bytes), bytesToScaled(r.Reading.Ingress.Bytes), bytesToScaled(r.Reading.Egress.Bytes))
+		}
+		return nil
+	})
 }
