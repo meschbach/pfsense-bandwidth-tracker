@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/engine"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -14,6 +17,17 @@ type Config struct {
 	NetworkInterface string
 }
 
+var lineReadingCounter = promauto.NewCounter(prometheus.CounterOpts{
+	Subsystem: "netstat",
+	Name:      "lines_read_count",
+	Help:      "Instance wide count of number of lines read",
+})
+var remoteCommandsFinished = prometheus.NewCounter(prometheus.CounterOpts{
+	Subsystem: "netstat",
+	Name:      "remote_ssh_exec_completed_count",
+	Help:      "Number of remote commands completed",
+})
+
 type Netstat struct {
 	config *Config
 }
@@ -21,6 +35,92 @@ type Netstat struct {
 func NewNetstat(cfg *Config) *Netstat {
 	return &Netstat{
 		config: cfg,
+	}
+}
+
+type nicMetrics struct {
+	ingressBytesTotal prometheus.Gauge
+	egressBytesTotal  prometheus.Gauge
+}
+
+type addressMetrics struct {
+	ingressBytesTotal prometheus.Gauge
+	egressBytesTotal  prometheus.Gauge
+}
+
+type metricsService struct {
+	networkInterfaces map[string]*nicMetrics
+	addresses         map[string]*addressMetrics
+}
+
+func (m *metricsService) recordMetics(reading []*IFaceReading) error {
+	for _, r := range reading {
+		if _, ok := m.networkInterfaces[r.Name]; !ok {
+			labels := prometheus.Labels{}
+			labels["nic"] = r.Name
+			m.networkInterfaces[r.Name] = &nicMetrics{
+				ingressBytesTotal: promauto.NewGauge(prometheus.GaugeOpts{
+					Subsystem:   "netstat",
+					Name:        "nic_ingress_bytes_total",
+					Help:        "Total bytes received on this interface",
+					ConstLabels: labels,
+				}),
+				egressBytesTotal: promauto.NewGauge(prometheus.GaugeOpts{
+					Subsystem:   "netstat",
+					Name:        "nic_egress_bytes_total",
+					Help:        "Total bytes sent on this interface",
+					ConstLabels: labels,
+				}),
+			}
+		}
+		m.networkInterfaces[r.Name].ingressBytesTotal.Set(float64(r.IfaceStats.Ingress.Bytes))
+		m.networkInterfaces[r.Name].egressBytesTotal.Set(float64(r.IfaceStats.Egress.Bytes))
+
+		for _, a := range r.AddressReadings {
+			if _, ok := m.addresses[a.Network]; !ok {
+				labels := prometheus.Labels{}
+				labels["network"] = a.Network
+				labels["address"] = a.Address
+				labels["nic"] = r.Name
+				m.addresses[a.Network] = &addressMetrics{
+					ingressBytesTotal: promauto.NewGauge(prometheus.GaugeOpts{
+						Subsystem:   "netstat",
+						Name:        "address_ingress_bytes_total",
+						Help:        "Total bytes received on this address",
+						ConstLabels: labels,
+					}),
+					egressBytesTotal: promauto.NewGauge(prometheus.GaugeOpts{
+						Subsystem:   "netstat",
+						Name:        "address_egress_bytes_total",
+						Help:        "Total bytes sent on this address",
+						ConstLabels: labels,
+					}),
+				}
+			}
+			m.addresses[a.Network].ingressBytesTotal.Set(float64(a.Reading.Ingress.Bytes))
+			m.addresses[a.Network].egressBytesTotal.Set(float64(a.Reading.Egress.Bytes))
+		}
+	}
+	return nil
+}
+
+func (n *Netstat) RunService(context context.Context) (problem error) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	s := &metricsService{
+		networkInterfaces: map[string]*nicMetrics{},
+		addresses:         map[string]*addressMetrics{},
+	}
+	for {
+		select {
+		case <-context.Done():
+			return context.Err()
+		case <-ticker.C:
+			if err := n.Tick(s.recordMetics); err != nil {
+				return err
+			}
+		}
 	}
 }
 
@@ -51,12 +151,14 @@ func (n *Netstat) Tick(onReading OnReading) (problem error) {
 			fmt.Fprintf(os.Stderr, "netstat.stderr(remote): %s\n", *line.Stderr)
 		}
 		if line.Stdout != nil {
+			lineReadingCounter.Inc()
 			if err := i.consumeLine(*line.Stdout); err != nil {
 				return err
 			}
 		}
 	}
 
+	remoteCommandsFinished.Inc()
 	result, err := i.done()
 	if err != nil {
 		return err

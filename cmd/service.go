@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/engine"
 	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/iftop"
+	"github.com/meschbach/pfsense-bandwidth-tracker/pkg/netstat"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -55,8 +56,23 @@ func runService(config *options) error {
 			panic(err)
 		}
 	}()
+
+	networkStats := netstat.NewNetstat(&netstat.Config{
+		PfsenseUser:      config.pfsenseUser,
+		PfsenseAddress:   config.pfsenseAddress,
+		PfsensePassword:  config.pfsensePassword,
+		NetworkInterface: config.networkInterface,
+	})
+	go func() {
+		err := networkStats.RunService(context.Background())
+		if err != nil {
+			panic(err)
+		}
+	}()
 	fmt.Printf("Exporting prometheus service on :2112\n")
 	http.Handle("/metrics", promhttp.Handler())
-	http.ListenAndServe(":2112", nil)
+	if err := http.ListenAndServe(":2112", nil); err != nil {
+		panic(err)
+	}
 	return nil
 }
